@@ -4,6 +4,7 @@
 
 import json
 import os
+import asyncio
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -12,13 +13,14 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 
 from backend.config import (
     CRAWLER_OUTPUT_DIR, PROCESSED_MARK_DIR,
-    MAX_FILE_SIZE, MAX_TEXT_LENGTH, MIN_TEXT_LENGTH
+    MAX_FILE_SIZE, MAX_TEXT_LENGTH, MIN_TEXT_LENGTH,
+    LLM_MAX_CONCURRENCY
 )
 from backend.models import (
     AnalyzeRequest, LLMExtractionOutput,
     BatchAnalyzeRequest, BatchAnalyzeResponse,
     AnalyzeStatusResponse, ApiResponse, ApiErrorResponse,
-    CrawlerOutput
+    CrawlerOutput, validate_extraction
 )
 from backend.services import neo4j_svc, llm_svc
 
@@ -35,6 +37,17 @@ async def analyze_document(req: AnalyzeRequest):
             source_url=req.source_url,
             language=req.language or "zh",
         )
+
+        # Schema 校验：拒绝不合法数据，防止脏数据写入 Neo4j
+        validation_errors = validate_extraction(result)
+        if validation_errors:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "LLM 抽取结果校验失败",
+                    "errors": [e.model_dump() for e in validation_errors],
+                }
+            )
 
         # 自动存入 Neo4j
         for entity in result.entities:
@@ -80,12 +93,24 @@ async def analyze_file(file: UploadFile = File(...)):
         text = text[:MAX_TEXT_LENGTH]
 
     result = await llm_svc.extract(text, source_url=source_url)
+
+    # Schema 校验
+    validation_errors = validate_extraction(result)
+    if validation_errors:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "LLM 抽取结果校验失败",
+                "errors": [e.model_dump() for e in validation_errors],
+            }
+        )
+
     return ApiResponse(data=result.model_dump())
 
 
 @router.post("/batch", response_model=ApiResponse)
 async def batch_analyze(req: BatchAnalyzeRequest):
-    """批量分析目录下所有爬虫输出文件"""
+    """批量分析目录下所有爬虫输出文件（并发处理）"""
     crawl_dir = Path(req.directory)
     if not crawl_dir.exists():
         raise HTTPException(status_code=400, detail="目录不存在")
@@ -96,40 +121,61 @@ async def batch_analyze(req: BatchAnalyzeRequest):
 
     json_files = list(crawl_dir.glob("*.json"))
     response = BatchAnalyzeResponse(total_files=len(json_files))
+    semaphore = asyncio.Semaphore(LLM_MAX_CONCURRENCY)
 
-    for f in json_files:
+    async def process_one(f: Path) -> dict | None:
+        """处理单个文件，返回 None 表示跳过，返回 dict 表示错误"""
         mark_file = mark_dir / f"{f.stem}.done"
         if req.resume and mark_file.exists():
+            return None  # 跳过
+
+        async with semaphore:
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                text = data.get("raw_text", "") if isinstance(data, dict) else data
+                source_url = data.get("source_url", f.name) if isinstance(data, dict) else f.name
+
+                if len(text) < MIN_TEXT_LENGTH:
+                    return None  # 跳过
+
+                result = await llm_svc.extract(text, source_url=source_url)
+
+                # Schema 校验
+                validation_errors = validate_extraction(result)
+                if validation_errors:
+                    return {
+                        "file": f.name,
+                        "error": "校验失败",
+                        "validation_errors": [e.model_dump() for e in validation_errors],
+                    }
+
+                for entity in result.entities:
+                    await neo4j_svc.merge_node(entity.type.value, entity.id, entity.model_dump())
+                for rel in result.relationships:
+                    await neo4j_svc.create_relationship(
+                        rel.source_id, rel.target_id,
+                        rel.type.value, rel.model_dump()
+                    )
+
+                if req.resume:
+                    mark_file.write_text(datetime.utcnow().isoformat())
+
+                return {"ok": True}
+
+            except Exception as e:
+                logger.error("文件处理失败: %s, %s", f.name, e)
+                return {"file": f.name, "error": str(e)}
+
+    results = await asyncio.gather(*[process_one(f) for f in json_files])
+
+    for r in results:
+        if r is None:
             response.skipped += 1
-            continue
-
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            text = data.get("raw_text", "") if isinstance(data, dict) else data
-            source_url = data.get("source_url", f.name) if isinstance(data, dict) else f.name
-
-            if len(text) < MIN_TEXT_LENGTH:
-                response.skipped += 1
-                continue
-
-            result = await llm_svc.extract(text, source_url=source_url)
-
-            for entity in result.entities:
-                await neo4j_svc.merge_node(entity.type.value, entity.id, entity.model_dump())
-            for rel in result.relationships:
-                await neo4j_svc.create_relationship(
-                    rel.source_id, rel.target_id,
-                    rel.type.value, rel.model_dump()
-                )
-
+        elif r.get("ok"):
             response.processed += 1
-            if req.resume:
-                mark_file.write_text(datetime.utcnow().isoformat())
-
-        except Exception as e:
-            logger.error("文件处理失败: %s, %s", f.name, e)
+        else:
             response.failed += 1
-            response.errors.append({"file": f.name, "error": str(e)})
+            response.errors.append(r)
 
     return ApiResponse(data=response.model_dump())
 

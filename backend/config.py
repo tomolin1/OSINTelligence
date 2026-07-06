@@ -26,6 +26,7 @@ LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")
 LLM_API_BASE = os.getenv("LLM_API_BASE", "https://api.openai.com/v1")
 LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "3"))
 LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "60"))
+LLM_MAX_CONCURRENCY = int(os.getenv("LLM_MAX_CONCURRENCY", "5"))
 
 # 爬虫输出目录
 CRAWLER_OUTPUT_DIR = os.getenv("CRAWLER_OUTPUT_DIR", "data/crawler_output")

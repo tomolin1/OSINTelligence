@@ -335,6 +335,62 @@ class HealthResponse(BaseModel):
     uptime_seconds: int = 0
 
 
+# ==================== 抽取结果校验 ====================
+
+class ValidationError_(BaseModel):
+    """校验错误"""
+    field: str
+    message: str
+    entity_id: str = ""
+
+
+def validate_extraction(output: LLMExtractionOutput) -> list[ValidationError_]:
+    """
+    校验 LLM 抽取结果，在写入 Neo4j 之前调用。
+    返回校验错误列表，空列表表示通过。
+    """
+    errors: list[ValidationError_] = []
+    entity_ids: set[str] = set()
+
+    for i, e in enumerate(output.entities):
+        entity_ids.add(e.id)
+
+        # 1. id 不能是占位值
+        if not e.id or e.id == "ENT_UNKNOWN":
+            errors.append(ValidationError_(field=f"entities[{i}].id", message="实体 ID 缺失或为占位值", entity_id=e.id))
+
+        # 2. name 不能为空
+        if not e.name or e.name.strip() == "":
+            errors.append(ValidationError_(field=f"entities[{i}].name", message="实体名称不能为空", entity_id=e.id))
+
+        # 3. type 必须是合法枚举
+        if e.type not in EntityType:
+            errors.append(ValidationError_(field=f"entities[{i}].type", message=f"无效实体类型: {e.type}", entity_id=e.id))
+
+        # 4. confidence 范围
+        if not (0 <= e.confidence <= 1):
+            errors.append(ValidationError_(field=f"entities[{i}].confidence", message=f"置信度超出 [0,1] 范围: {e.confidence}", entity_id=e.id))
+
+    for i, r in enumerate(output.relationships):
+        # 5. source_id 必须引用已有实体
+        if r.source_id not in entity_ids:
+            errors.append(ValidationError_(field=f"relationships[{i}].source_id", message=f"source_id 引用了不存在的实体: {r.source_id}", entity_id=r.id))
+
+        # 6. target_id 必须引用已有实体
+        if r.target_id not in entity_ids:
+            errors.append(ValidationError_(field=f"relationships[{i}].target_id", message=f"target_id 引用了不存在的实体: {r.target_id}", entity_id=r.id))
+
+        # 7. type 必须是合法枚举
+        if r.type not in RelationType:
+            errors.append(ValidationError_(field=f"relationships[{i}].type", message=f"无效关系类型: {r.type}", entity_id=r.id))
+
+        # 8. confidence 范围
+        if not (0 <= r.confidence <= 1):
+            errors.append(ValidationError_(field=f"relationships[{i}].confidence", message=f"置信度超出 [0,1] 范围: {r.confidence}", entity_id=r.id))
+
+    return errors
+
+
 # ==================== 统一响应 ====================
 
 class ApiResponse(BaseModel):
