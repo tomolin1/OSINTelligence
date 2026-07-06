@@ -1,0 +1,127 @@
+{
+  "document_id": "a1b2c3d4e5f67890",
+  "entities": [
+    {
+      "id": "ENT_APT_GROUP_a1b2c3d4",
+      "name": "APT28",
+      "type": "APT_GROUP",
+      "aliases": ["Fancy Bear", "Sofacy", "Sednit", "Tsar Team"],
+      "description": "俄罗斯GRU所属APT组织，至少从2007年开始活跃",
+      "source_text": "APT28 is a threat group that has been attributed to Russia's General Staff Main Intelligence Directorate (GRU)",
+      "confidence": 0.97
+    },
+    {
+      "id": "ENT_CVE_c9d0e1f2",
+      "name": "CVE-2025-12345",
+      "type": "CVE",
+      "aliases": [],
+      "description": "APT28利用的远程代码执行漏洞",
+      "source_text": "exploiting CVE-2025-12345 for remote code execution",
+      "confidence": 0.92
+    },
+    {
+      "id": "ENT_MALWARE_e5f6a7b8",
+      "name": "LameHug",
+      "type": "MALWARE",
+      "aliases": [],
+      "description": "APT28使用的后门恶意软件",
+      "source_text": "APT28 was observed using the LameHug backdoor malware",
+      "confidence": 0.90
+    },
+    {
+      "id": "ENT_TECHNIQUE_t1566",
+      "name": "鱼叉式钓鱼附件",
+      "type": "TECHNIQUE",
+      "aliases": ["T1566.001"],
+      "description": "通过鱼叉式钓鱼邮件投递恶意附件",
+      "source_text": "The group is known for using spearphishing attachments (T1566.001)",
+      "confidence": 0.95
+    },
+    {
+      "id": "ENT_ORGANIZATION_gru",
+      "name": "GRU",
+      "type": "ORGANIZATION",
+      "aliases": ["俄罗斯总参谋部情报总局"],
+      "description": "俄罗斯总参谋部情报总局",
+      "source_text": "Russia's General Staff Main Intelligence Directorate (GRU)",
+      "confidence": 0.96
+    },
+    {
+      "id": "ENT_COUNTRY_russia",
+      "name": "Russia",
+      "type": "COUNTRY",
+      "aliases": ["俄罗斯"],
+      "description": "APT28的归属国",
+      "source_text": "attributed to Russia's General Staff",
+      "confidence": 0.98
+    },
+    {
+      "id": "ENT_COUNTRY_ukraine",
+      "name": "Ukraine",
+      "type": "COUNTRY",
+      "aliases": ["乌克兰"],
+      "description": "APT28的攻击目标国家",
+      "source_text": "against Ukrainian targets",
+      "confidence": 0.94
+    }
+  ],
+  "relationships": [
+    {
+      "id": "REL_apt28_attributed_gru",
+      "source_id": "ENT_APT_GROUP_a1b2c3d4",
+      "target_id": "ENT_ORGANIZATION_gru",
+      "type": "ATTRIBUTED_TO",
+      "description": "APT28归属于俄罗斯GRU",
+      "source_text": "APT28 is a threat group that has been attributed to Russia's GRU",
+      "confidence": 0.96
+    },
+    {
+      "id": "REL_apt28_uses_lamehug",
+      "source_id": "ENT_APT_GROUP_a1b2c3d4",
+      "target_id": "ENT_MALWARE_e5f6a7b8",
+      "type": "USES",
+      "description": "APT28使用LameHug恶意软件",
+      "source_text": "APT28 was observed using the LameHug backdoor malware",
+      "confidence": 0.88
+    },
+    {
+      "id": "REL_apt28_exploits_cve",
+      "source_id": "ENT_APT_GROUP_a1b2c3d4",
+      "target_id": "ENT_CVE_c9d0e1f2",
+      "type": "EXPLOITS",
+      "description": "APT28利用CVE-2025-12345漏洞",
+      "source_text": "exploiting CVE-2025-12345 for remote code execution",
+      "confidence": 0.85
+    },
+    {
+      "id": "REL_apt28_uses_t1566",
+      "source_id": "ENT_APT_GROUP_a1b2c3d4",
+      "target_id": "ENT_TECHNIQUE_t1566",
+      "type": "USES",
+      "description": "APT28使用鱼叉式钓鱼技术",
+      "source_text": "known for using spearphishing attachments (T1566.001)",
+      "confidence": 0.93
+    },
+    {
+      "id": "REL_apt28_targets_ukraine",
+      "source_id": "ENT_APT_GROUP_a1b2c3d4",
+      "target_id": "ENT_COUNTRY_ukraine",
+      "type": "TARGETS",
+      "description": "APT28瞄准乌克兰",
+      "source_text": "against Ukrainian targets",
+      "confidence": 0.91
+    }
+  ],
+  "summary": {
+    "overview": "APT28（Fancy Bear）是俄罗斯GRU下属的APT组织，使用LameHug恶意软件和CVE-2025-12345漏洞攻击乌克兰目标",
+    "key_findings": [
+      "APT28已被确认归属于俄罗斯GRU",
+      "APT28自2007年以来持续活跃",
+      "2025年APT28利用LameHug恶意软件和CVE-2025-12345攻击乌克兰",
+      "鱼叉式钓鱼邮件是APT28的主要初始访问手段"
+    ],
+    "threat_level": "HIGH",
+    "relevant_ttps": ["T1566.001", "T1203"]
+  },
+  "analysis_time": "2026-07-06T12:00:00Z"
+}

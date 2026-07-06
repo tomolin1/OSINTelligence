@@ -1,0 +1,544 @@
+{
+  "title": "开源威胁情报APT研判系统 - 数据规范",
+  "version": "1.0.0",
+  "description": "本文件为整个系统的数据格式契约。所有模块（爬虫、LLM、图谱、前端）必须严格遵守此规范，任何格式变更需由架构组统一协调。",
+  "last_updated": "2026-07-06",
+
+  "crawler": {
+    "description": "爬虫模块输出格式 — 所有爬虫脚本必须输出此格式的JSON文件到统一目录",
+    "output_format": {
+      "type": "object",
+      "required": ["source_url", "source_type", "title", "raw_text", "language", "crawl_time", "metadata"],
+      "properties": {
+        "source_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "原始URL"
+        },
+        "source_type": {
+          "type": "string",
+          "enum": ["threat_report", "news_article", "social_media", "forum_post", "cve_database", "cert_alert", "blog", "academic_paper"],
+          "description": "来源类型"
+        },
+        "title": {
+          "type": "string",
+          "description": "文档标题"
+        },
+        "raw_text": {
+          "type": "string",
+          "description": "清洗后的纯文本内容（去除HTML标签、脚本、样式等）"
+        },
+        "language": {
+          "type": "string",
+          "enum": ["zh", "en"],
+          "description": "语言代码"
+        },
+        "crawl_time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "爬取时间（ISO 8601）"
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "author": { "type": "string", "description": "文档作者/发布者" },
+            "publish_date": { "type": "string", "format": "date", "description": "原文发布时间" },
+            "tags": { "type": "array", "items": { "type": "string" }, "description": "原文标签" },
+            "word_count": { "type": "integer", "description": "纯文本字数" },
+            "file_path": { "type": "string", "description": "本地存储路径" }
+          }
+        }
+      }
+    }
+  },
+
+  "llm_extraction": {
+    "description": "LLM分析模块输出格式 — 大模型必须严格按此Schema输出合法JSON",
+    "output_format": {
+      "type": "object",
+      "required": ["document_id", "entities", "relationships", "summary", "analysis_time"],
+      "properties": {
+        "document_id": {
+          "type": "string",
+          "description": "对应爬虫文档的唯一标识（使用source_url的MD5前16位）"
+        },
+        "entities": {
+          "type": "array",
+          "description": "从文本中提取的实体列表",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "type", "confidence"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "实体唯一ID，格式: ENT_{type}_{uuid_v4_short}"
+              },
+              "name": {
+                "type": "string",
+                "description": "实体名称（原文中的标准名称）"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "APT_GROUP",
+                  "MALWARE",
+                  "TOOL",
+                  "CVE",
+                  "TECHNIQUE",
+                  "PERSON",
+                  "COUNTRY",
+                  "REGION",
+                  "INDUSTRY",
+                  "CAMPAIGN",
+                  "ORGANIZATION",
+                  "TIME"
+                ],
+                "description": "实体类型"
+              },
+              "aliases": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "别名列表"
+              },
+              "description": {
+                "type": "string",
+                "description": "实体描述（原文上下文摘要）"
+              },
+              "source_text": {
+                "type": "string",
+                "description": "实体在原文中的精确引用片段（用于证据追溯）"
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "提取置信度"
+              },
+              "mentions": {
+                "type": "array",
+                "description": "实体在原文中的出现位置",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sentence": { "type": "string", "description": "所在句子" },
+                    "offset_start": { "type": "integer", "description": "在原文中的起始偏移" },
+                    "offset_end": { "type": "integer", "description": "在原文中的结束偏移" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "relationships": {
+          "type": "array",
+          "description": "实体之间的关系列表",
+          "items": {
+            "type": "object",
+            "required": ["id", "source_id", "target_id", "type", "confidence"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "关系唯一ID，格式: REL_{uuid_v4_short}"
+              },
+              "source_id": {
+                "type": "string",
+                "description": "主体实体ID"
+              },
+              "target_id": {
+                "type": "string",
+                "description": "客体实体ID"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "ATTRIBUTED_TO",
+                  "USES",
+                  "TARGETS",
+                  "DEVELOPS",
+                  "EXPLOITS",
+                  "RELATED_TO",
+                  "AFFILIATED_WITH",
+                  "LEADS_TO",
+                  "DISCOVERED_BY",
+                  "EMPLOYS",
+                  "FUNDED_BY",
+                  "COORDINATES_WITH"
+                ],
+                "description": "关系类型"
+              },
+              "description": {
+                "type": "string",
+                "description": "关系描述"
+              },
+              "source_text": {
+                "type": "string",
+                "description": "关系在原文中的证据片段"
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "关系提取置信度"
+              },
+              "temporal": {
+                "type": "object",
+                "description": "时间信息（可选）",
+                "properties": {
+                  "start_date": { "type": "string", "format": "date" },
+                  "end_date": { "type": "string", "format": "date" }
+                }
+              },
+              "mitre_attack_id": {
+                "type": "string",
+                "description": "对应的MITRE ATT&CK技术ID（可选）"
+              }
+            }
+          }
+        },
+        "summary": {
+          "type": "object",
+          "description": "文档摘要分析",
+          "properties": {
+            "overview": { "type": "string", "description": "30-50字概述" },
+            "key_findings": { "type": "array", "items": { "type": "string" }, "description": "关键发现列表（3-5条）" },
+            "threat_level": {
+              "type": "string",
+              "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+              "description": "威胁等级"
+            },
+            "relevant_ttps": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "相关MITRE ATT&CK TTP ID列表"
+            }
+          }
+        },
+        "analysis_time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "分析完成时间"
+        }
+      }
+    }
+  },
+
+  "neo4j_schema": {
+    "description": "Neo4j图数据库节点与关系定义",
+    "nodes": {
+      "APT_GROUP": {
+        "properties": {
+          "id": { "type": "string", "constraint": "unique" },
+          "name": { "type": "string", "description": "组织名称" },
+          "aliases": { "type": "list", "description": "别名列表" },
+          "origin_country": { "type": "string", "description": "归属国家" },
+          "active_years": { "type": "string", "description": "活跃年份区间" },
+          "motivation": { "type": "string", "description": "动机（espionage/sabotage/financial）" },
+          "description": { "type": "string" },
+          "first_seen": { "type": "date" },
+          "last_seen": { "type": "date" },
+          "confidence": { "type": "float" },
+          "source_count": { "type": "int", "description": "提及该实体的来源文档数" }
+        },
+        "indexes": ["name", "origin_country"]
+      },
+      "MALWARE": {
+        "properties": {
+          "id": { "type": "string", "constraint": "unique" },
+          "name": { "type": "string" },
+          "aliases": { "type": "list" },
+          "type": { "type": "string", "description": "类型（trojan/ransomware/backdoor/worm）" },
+          "platform": { "type": "string", "description": "目标平台" },
+          "capabilities": { "type": "list", "description": "能力列表" },
+          "description": { "type": "string" },
+          "first_seen": { "type": "date" },
+          "confidence": { "type": "float" }
+        },
+        "indexes": ["name"]
+      },
+      "TOOL": {
+        "properties": {
+          "id": { "type": "string", "constraint": "unique" },
+          "name": { "type": "string" },
+          "type": { "type": "string", "description": "工具类型（exploit_framework/living_off_land/utility）" },
+          "description": { "type": "string" },
+          "confidence": { "type": "float" }
+        },
+        "indexes": ["name"]
+      },
+      "CVE": {
+        "properties": {
+          "id": { "type": "string", "constraint": "unique", "description": "CVE编号" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "cvss_score": { "type": "float" },
+          "severity": { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] },
+          "affected_software": { "type": "list" },
+          "disclosure_date": { "type": "date" },
+          "exploitation_status": { "type": "string", "enum": ["exploited", "poc", "theoretical", "patched"] }
+        },
+        "indexes": ["name"]
+      },
+      "TECHNIQUE": {
+        "properties": {
+          "id": { "type": "string", "constraint": "unique", "description": "MITRE ATT&CK ID" },
+          "name": { "type": "string" },
+          "tactic": { "type": "string", "description": "所属战术阶段" },
+          "description": { "type": "string" },
+          "platform": { "type": "list" }
+        },
+        "indexes": ["id", "name"]
+      },
+      "PERSON": {
+        "properties": {
+          "id": { "type": "string", "constraint": "unique" },
+          "name": { "type": "string" },
+          "aliases": { "type": "list" },
+          "role": { "type": "string", "description": "角色（hacker/commander/researcher）" },
+          "affiliation": { "type": "string", "description": "所属组织" },
+          "confidence": { "type": "float" }
+        },
+        "indexes": ["name"]
+      },
+      "COUNTRY": {
+        "properties": {
+          "id": { "type": "string", "constraint": "unique" },
+          "name": { "type": "string" },
+          "code": { "type": "string", "description": "ISO 3166-1 alpha-2代码" }
+        },
+        "indexes": ["name", "code"]
+      },
+      "INDUSTRY": {
+        "properties": {
+          "id": { "type": "string", "constraint": "unique" },
+          "name": { "type": "string" },
+          "sector": { "type": "string", "description": "行业分类" }
+        },
+        "indexes": ["name"]
+      },
+      "CAMPAIGN": {
+        "properties": {
+          "id": { "type": "string", "constraint": "unique" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "start_date": { "type": "date" },
+          "end_date": { "type": "date" },
+          "status": { "type": "string", "enum": ["ongoing", "concluded", "attributed"] },
+          "confidence": { "type": "float" }
+        },
+        "indexes": ["name"]
+      }
+    },
+    "relationships": {
+      "ATTRIBUTED_TO": { "description": "攻击/事件/工具归因于某组织", "source_types": ["CAMPAIGN", "MALWARE", "TOOL"], "target_types": ["APT_GROUP"] },
+      "USES": { "description": "组织使用某工具/恶意软件/技术", "source_types": ["APT_GROUP", "CAMPAIGN"], "target_types": ["MALWARE", "TOOL", "TECHNIQUE"] },
+      "TARGETS": { "description": "组织瞄准某国家/行业", "source_types": ["APT_GROUP", "CAMPAIGN"], "target_types": ["COUNTRY", "INDUSTRY"] },
+      "DEVELOPS": { "description": "组织开发某工具/恶意软件", "source_types": ["APT_GROUP"], "target_types": ["MALWARE", "TOOL"] },
+      "EXPLOITS": { "description": "利用某漏洞", "source_types": ["APT_GROUP", "MALWARE"], "target_types": ["CVE"] },
+      "RELATED_TO": { "description": "通用关联关系", "source_types": ["ANY"], "target_types": ["ANY"] },
+      "AFFILIATED_WITH": { "description": "组织间关联/合作", "source_types": ["APT_GROUP"], "target_types": ["APT_GROUP"] },
+      "LEADS_TO": { "description": "攻击链中的顺序关系", "source_types": ["TECHNIQUE"], "target_types": ["TECHNIQUE"] },
+      "DISCOVERED_BY": { "description": "被某安全厂商/研究者发现", "source_types": ["CVE", "MALWARE"], "target_types": ["ORGANIZATION", "PERSON"] },
+      "EMPLOYS": { "description": "组织雇佣某人员", "source_types": ["APT_GROUP", "ORGANIZATION"], "target_types": ["PERSON"] }
+    },
+    "cypher_templates": {
+      "create_node": "CREATE (n:{label} {id: $id, name: $name, ...properties})",
+      "create_relationship": "MATCH (a {id: $source_id}), (b {id: $target_id}) CREATE (a)-[r:{type} {id: $rel_id, confidence: $confidence}]->(b) RETURN r",
+      "merge_node": "MERGE (n:{label} {id: $id}) ON CREATE SET n += $properties ON MATCH SET n += $updated_properties",
+      "get_subgraph": "MATCH (n)-[r]-(m) WHERE n.id = $entity_id RETURN n, r, m LIMIT $depth"
+    }
+  },
+
+  "api_contracts": {
+    "description": "后端API请求/响应格式定义",
+    "endpoints": {
+      "analyze_document": {
+        "method": "POST",
+        "path": "/api/v1/analyze",
+        "description": "提交文本进行LLM实体关系抽取",
+        "request": {
+          "content_type": "application/json",
+          "body": {
+            "type": "object",
+            "required": ["text", "source_url"],
+            "properties": {
+              "text": { "type": "string", "description": "待分析文本内容" },
+              "source_url": { "type": "string", "description": "来源URL" },
+              "language": { "type": "string", "enum": ["zh", "en"], "description": "语言（留空自动检测）" },
+              "source_type": { "type": "string", "description": "来源类型" }
+            }
+          }
+        },
+        "response": {
+          "200": {
+            "description": "分析完成",
+            "body": { "$ref": "#/llm_extraction/output_format" }
+          },
+          "400": { "description": "请求参数错误" },
+          "429": { "description": "API速率限制" },
+          "500": { "description": "LLM调用失败" }
+        }
+      },
+
+      "analyze_file": {
+        "method": "POST",
+        "path": "/api/v1/analyze/file",
+        "description": "上传文件进行LLM抽取（爬虫输出的JSON或txt）",
+        "request": {
+          "content_type": "multipart/form-data",
+          "body": {
+            "type": "object",
+            "required": ["file"],
+            "properties": {
+              "file": { "type": "string", "format": "binary" }
+            }
+          }
+        },
+        "response": {
+          "200": {
+            "body": { "$ref": "#/llm_extraction/output_format" }
+          }
+        }
+      },
+
+      "batch_analyze": {
+        "method": "POST",
+        "path": "/api/v1/analyze/batch",
+        "description": "批量分析目录下所有爬虫输出文件",
+        "request": {
+          "content_type": "application/json",
+          "body": {
+            "type": "object",
+            "required": ["directory"],
+            "properties": {
+              "directory": { "type": "string", "description": "爬虫输出目录路径" },
+              "resume": { "type": "boolean", "description": "是否启用断点续传" }
+            }
+          }
+        },
+        "response": {
+          "200": {
+            "type": "object",
+            "properties": {
+              "total_files": { "type": "integer" },
+              "processed": { "type": "integer" },
+              "failed": { "type": "integer" },
+              "results": { "type": "array", "items": { "$ref": "#/llm_extraction/output_format" } }
+            }
+          }
+        }
+      },
+
+      "get_graph": {
+        "method": "GET",
+        "path": "/api/v1/graph",
+        "description": "获取知识图谱数据（用于前端渲染）",
+        "parameters": [
+          { "name": "entity_id", "in": "query", "schema": { "type": "string" }, "description": "中心实体ID（不传则返回全图概览）" },
+          { "name": "depth", "in": "query", "schema": { "type": "integer", "default": 2 }, "description": "关系深度（最大2层）" },
+          { "name": "types", "in": "query", "schema": { "type": "string" }, "description": "按实体类型过滤，逗号分隔" },
+          { "name": "time_range", "in": "query", "schema": { "type": "string" }, "description": "时间范围过滤，格式: start_date,end_date" }
+        ],
+        "response": {
+          "200": {
+            "type": "object",
+            "required": ["nodes", "edges"],
+            "properties": {
+              "nodes": {
+                "type": "array",
+                "description": "节点列表",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "name", "type", "group"],
+                  "properties": {
+                    "id": { "type": "string" },
+                    "name": { "type": "string", "description": "显示名称" },
+                    "type": { "type": "string", "description": "实体类型（大写枚举）" },
+                    "group": { "type": "integer", "description": "用于前端颜色分组的数字标识" },
+                    "confidence": { "type": "number" },
+                    "description": { "type": "string" },
+                    "properties": { "type": "object", "description": "其他属性" }
+                  }
+                }
+              },
+              "edges": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "source", "target", "type", "label"],
+                  "properties": {
+                    "id": { "type": "string" },
+                    "source": { "type": "string", "description": "源节点ID" },
+                    "target": { "type": "string", "description": "目标节点ID" },
+                    "type": { "type": "string", "description": "关系类型枚举" },
+                    "label": { "type": "string", "description": "关系显示标签" },
+                    "confidence": { "type": "number" },
+                    "source_text": { "type": "string" },
+                    "mitre_attack_id": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+
+      "search_entities": {
+        "method": "GET",
+        "path": "/api/v1/entities/search",
+        "description": "搜索实体",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "required": true, "description": "搜索关键词" },
+          { "name": "type", "in": "query", "schema": { "type": "string" }, "description": "实体类型过滤" },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "page_size", "in": "query", "schema": { "type": "integer", "default": 20 } }
+        ],
+        "response": {
+          "200": {
+            "type": "object",
+            "properties": {
+              "total": { "type": "integer" },
+              "items": { "type": "array", "items": { "$ref": "#/neo4j_schema/nodes/APT_GROUP" } }
+            }
+          }
+        }
+      },
+
+      "get_report": {
+        "method": "GET",
+        "path": "/api/v1/report",
+        "description": "生成威胁分析报告",
+        "parameters": [
+          { "name": "entity_id", "in": "query", "schema": { "type": "string" }, "description": "目标实体ID" },
+          { "name": "format", "in": "query", "schema": { "type": "string", "enum": ["json", "markdown"] }, "default": "json" }
+        ],
+        "response": {
+          "200": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string" },
+              "summary": { "type": "string" },
+              "entity_profile": { "type": "object" },
+              "timeline": { "type": "array" },
+              "ttp_analysis": { "type": "array" },
+              "target_analysis": { "type": "array" },
+              "related_entities": { "type": "array" },
+              "threat_assessment": { "type": "object" }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "error_format": {
+    "description": "全局错误响应格式",
+    "type": "object",
+    "required": ["error_code", "message", "timestamp"],
+    "properties": {
+      "error_code": { "type": "string", "description": "错误码，格式: ERR_{CATEGORY}_{NUMBER}" },
+      "message": { "type": "string", "description": "人类可读的错误描述" },
+      "details": { "type": "object", "description": "详细错误信息（可选）" },
+      "timestamp": { "type": "string", "format": "date-time" }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "source_url": "https://attack.mitre.org/groups/G0007/",
+  "source_type": "threat_report",
+  "title": "APT28 - MITRE ATT&CK",
+  "raw_text": "APT28 is a threat group that has been attributed to Russia's General Staff Main Intelligence Directorate (GRU) 85th Main Special Service Center (GTsSS). This group is known by many names including Fancy Bear, Sofacy, Sednit, and Tsar Team. APT28 has been active since at least 2007 and primarily targets government, military, and energy sectors. The group is known for using spearphishing attachments (T1566.001) and exploiting vulnerabilities for initial access. APT28 utilizes malware such as X-Agent, X-Tunnel, and LameHug. In 2025, APT28 was observed using the LameHug backdoor malware against Ukrainian targets, exploiting CVE-2025-12345 for remote code execution.",
+  "language": "en",
+  "crawl_time": "2026-07-06T10:00:00Z",
+  "metadata": {
+    "author": "MITRE",
+    "publish_date": "2026-01-15",
+    "tags": ["APT28", "GRU", "Russia", "Fancy Bear", "G0007"],
+    "word_count": 112,
+    "file_path": "/data/crawler_output/mitre_g0007.json"
+  }
+}

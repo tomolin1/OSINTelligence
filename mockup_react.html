@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>APT威胁情报图谱 - React + ECharts</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: "Microsoft YaHei", Arial, sans-serif; background: #0d1117; color: #e6edf3; overflow: hidden; height: 100vh; }
+
+/* 顶栏 — 现代简洁 */
+.topbar { height: 56px; background: #161b22; border-bottom: 1px solid #30363d; display: flex; align-items: center; padding: 0 24px; justify-content: space-between; }
+.topbar-left { display: flex; align-items: center; gap: 20px; }
+.topbar h1 { font-size: 16px; font-weight: 600; color: #f0f6fc; }
+.topbar .badge { font-size: 10px; padding: 2px 8px; border-radius: 12px; background: #1f6feb; color: #fff; margin-left: 8px; vertical-align: middle; }
+.search-bar { display: flex; align-items: center; background: #21262d; border: 1px solid #30363d; border-radius: 6px; padding: 0 12px; width: 320px; }
+.search-bar input { background: none; border: none; color: #e6edf3; padding: 8px 0; width: 100%; font-size: 14px; outline: none; }
+.search-bar input::placeholder { color: #6e7681; }
+.search-bar .shortcut { font-size: 11px; color: #6e7681; border: 1px solid #30363d; border-radius: 4px; padding: 1px 6px; }
+
+/* 主体 — flex 全屏 */
+.app-body { display: flex; height: calc(100vh - 56px); }
+
+/* 左侧面板 — 浮动卡片 */
+.left-panel { width: 300px; padding: 16px; overflow-y: auto; }
+.card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+.card h3 { font-size: 13px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+.entity-item { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid #21262d; cursor: pointer; }
+.entity-item:last-child { border-bottom: none; }
+.entity-dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 10px; flex-shrink: 0; }
+.entity-info { flex: 1; }
+.entity-name { font-size: 14px; font-weight: 500; }
+.entity-meta { font-size: 11px; color: #6e7681; margin-top: 1px; }
+.entity-conf { font-size: 11px; color: #58a6ff; }
+
+/* 中央图谱 */
+.center-panel { flex: 1; position: relative; margin: 12px; background: #161b22; border: 1px solid #30363d; border-radius: 12px; overflow: hidden; }
+
+/* 图谱工具栏 — 悬浮在图谱上 */
+.graph-toolbar { position: absolute; top: 16px; left: 16px; display: flex; gap: 8px; z-index: 10; }
+.tool-btn { padding: 6px 12px; background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+.tool-btn:hover { background: #30363d; }
+.tool-btn.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+.tool-btn .icon { font-size: 14px; }
+
+/* 图例 — 右下 */
+.legend { position: absolute; bottom: 16px; right: 16px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px; z-index: 10; }
+.legend-item { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8b949e; padding: 2px 0; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+/* 模拟力导向图 — 用 SVG 画几个圆圈和连线 */
+.graph-canvas { width: 100%; height: 100%; position: relative; }
+.graph-canvas svg { width: 100%; height: 100%; }
+.node-group { cursor: pointer; }
+.node-group:hover .node-circle { stroke-width: 3; stroke: #fff; }
+.node-label { font-size: 11px; fill: #c9d1d9; pointer-events: none; }
+
+/* 右侧详情面板 — 滑入 */
+.right-panel { width: 360px; padding: 16px; overflow-y: auto; }
+.detail-header { margin-bottom: 16px; }
+.detail-header h2 { font-size: 22px; font-weight: 600; }
+.detail-header .tags { display: flex; gap: 6px; margin-top: 8px; }
+.tag { font-size: 11px; padding: 2px 10px; border-radius: 12px; }
+.tag-apt { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+.tag-country { background: rgba(34,197,94,0.2); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+.stat-row { display: flex; gap: 12px; margin-bottom: 16px; }
+.stat-box { flex: 1; background: #21262d; border-radius: 8px; padding: 12px; text-align: center; }
+.stat-value { font-size: 20px; font-weight: 700; color: #f0f6fc; }
+.stat-label { font-size: 11px; color: #6e7681; margin-top: 2px; }
+.relation-item { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid #21262d; font-size: 13px; }
+.relation-item .arrow { color: #30363d; margin: 0 8px; }
+
+/* 加载/状态指示 */
+.status-bar { display: flex; align-items: center; gap: 6px; padding: 8px 16px; background: #0d1117; border-top: 1px solid #30363d; font-size: 12px; color: #6e7681; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: #3fb950; }
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0d1117; }
+::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <h1>🛡️ APT 威胁图谱 <span class="badge" style="background:#1f6feb;">React 18</span> <span class="badge" style="background:#8957e5;">ECharts</span> <span class="badge" style="background:#238636;">FastAPI</span></h1>
+    <div class="search-bar">
+      <input type="text" placeholder="搜索组织、恶意软件、CVE..." autofocus>
+      <span class="shortcut">⌘K</span>
+    </div>
+  </div>
+  <div style="display:flex; align-items:center; gap:12px; font-size:13px;">
+    <span style="color:#6e7681;">已加载 31 节点 · 31 条边</span>
+    <span style="padding:4px 12px; background:#21262d; border:1px solid #30363d; border-radius:6px;">👤 管理员</span>
+  </div>
+</div>
+
+<div class="app-body">
+
+  <!-- 左侧 -->
+  <div class="left-panel">
+    <div class="card">
+      <h3>📌 已选实体</h3>
+      <div class="entity-item">
+        <div class="entity-dot" style="background:#ef4444;"></div>
+        <div class="entity-info">
+          <div class="entity-name">APT28</div>
+          <div class="entity-meta">APT_GROUP · 俄罗斯 · GRU</div>
+        </div>
+        <div class="entity-conf">0.97</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>🔗 直接关联 (8)</h3>
+      <div class="entity-item">
+        <div class="entity-dot" style="background:#f59e0b;"></div>
+        <div class="entity-info">
+          <div class="entity-name">LameHug <span style="font-size:11px;color:#6e7681;">→ 使用</span></div>
+        </div>
+        <div class="entity-conf">0.88</div>
+      </div>
+      <div class="entity-item">
+        <div class="entity-dot" style="background:#f59e0b;"></div>
+        <div class="entity-info">
+          <div class="entity-name">X-Agent <span style="font-size:11px;color:#6e7681;">→ 使用</span></div>
+        </div>
+        <div class="entity-conf">0.92</div>
+      </div>
+      <div class="entity-item">
+        <div class="entity-dot" style="background:#a855f7;"></div>
+        <div class="entity-info">
+          <div class="entity-name">CVE-2025-12345 <span style="font-size:11px;color:#6e7681;">→ 利用</span></div>
+        </div>
+        <div class="entity-conf">0.85</div>
+      </div>
+      <div class="entity-item">
+        <div class="entity-dot" style="background:#3b82f6;"></div>
+        <div class="entity-info">
+          <div class="entity-name">鱼叉式钓鱼 <span style="font-size:11px;color:#6e7681;">→ 使用</span></div>
+        </div>
+        <div class="entity-conf">0.95</div>
+      </div>
+      <div class="entity-item">
+        <div class="entity-dot" style="background:#22c55e;"></div>
+        <div class="entity-info">
+          <div class="entity-name">Ukraine <span style="font-size:11px;color:#6e7681;">→ 瞄准</span></div>
+        </div>
+        <div class="entity-conf">0.93</div>
+      </div>
+      <div class="entity-item">
+        <div class="entity-dot" style="background:#6b7280;"></div>
+        <div class="entity-info">
+          <div class="entity-name">GRU <span style="font-size:11px;color:#6e7681;">→ 归属于</span></div>
+        </div>
+        <div class="entity-conf">0.94</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>⏱ 时间轴</h3>
+      <div style="padding:4px 0;">
+        <div style="display:flex; justify-content:space-between; font-size:11px; color:#6e7681;">
+          <span>2007</span>
+          <span>2016</span>
+          <span>2025</span>
+          <span>2026</span>
+        </div>
+        <div style="height:4px; background:#21262d; border-radius:2px; margin:4px 0; position:relative;">
+          <div style="width:95%; height:100%; background:#1f6feb; border-radius:2px;"></div>
+          <div style="position:absolute; left:70%; top:-4px; width:12px; height:12px; background:#1f6feb; border-radius:50%; border:2px solid #0d1117;"></div>
+        </div>
+        <div style="font-size:11px; color:#8b949e; margin-top:4px;">拖动滑块过滤时间范围</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 中央图谱 -->
+  <div class="center-panel">
+    <div class="graph-toolbar">
+      <div class="tool-btn active"><span class="icon">🔄</span> 力导向</div>
+      <div class="tool-btn"><span class="icon">🔍</span> 缩放到适配</div>
+      <div class="tool-btn"><span class="icon">📷</span> 截图导出</div>
+    </div>
+
+    <div class="graph-canvas">
+      <svg viewBox="0 0 700 500">
+        <!-- 连线 -->
+        <line x1="350" y1="160" x2="250" y2="290" stroke="#30363d" stroke-width="1.5"/>
+        <line x1="350" y1="160" x2="430" y2="280" stroke="#30363d" stroke-width="1.5"/>
+        <line x1="350" y1="160" x2="180" y2="160" stroke="#30363d" stroke-width="1.5"/>
+        <line x1="350" y1="160" x2="520" y2="180" stroke="#30363d" stroke-width="1.5"/>
+        <line x1="350" y1="160" x2="300" y2="50" stroke="#30363d" stroke-width="1.5"/>
+        <line x1="350" y1="160" x2="550" y2="380" stroke="#30363d" stroke-width="1.5"/>
+        <line x1="250" y1="290" x2="120" y2="380" stroke="#30363d" stroke-width="1"/>
+        <line x1="250" y1="290" x2="350" y2="400" stroke="#30363d" stroke-width="1"/>
+        <line x1="430" y1="280" x2="480" y2="420" stroke="#30363d" stroke-width="1"/>
+        <line x1="430" y1="280" x2="600" y2="300" stroke="#30363d" stroke-width="1"/>
+
+        <!-- APT28 中心节点 -->
+        <circle cx="350" cy="160" r="32" fill="#ef4444" stroke="#b91c1c" stroke-width="2"/>
+        <text x="350" y="164" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">APT28</text>
+
+        <!-- 周围节点 -->
+        <circle cx="250" cy="290" r="24" fill="#f59e0b" stroke="#d97706" stroke-width="2"/>
+        <text x="250" y="294" text-anchor="middle" fill="#fff" font-size="10">LameHug</text>
+        <circle cx="430" cy="280" r="24" fill="#f59e0b" stroke="#d97706" stroke-width="2"/>
+        <text x="430" y="284" text-anchor="middle" fill="#fff" font-size="10">X-Agent</text>
+        <circle cx="180" cy="160" r="22" fill="#3b82f6" stroke="#2563eb" stroke-width="2"/>
+        <text x="180" y="164" text-anchor="middle" fill="#fff" font-size="9">T1566</text>
+        <circle cx="520" cy="180" r="22" fill="#a855f7" stroke="#7c3aed" stroke-width="2"/>
+        <text x="520" y="184" text-anchor="middle" fill="#fff" font-size="9">CVE-2025</text>
+        <circle cx="300" cy="50" r="22" fill="#22c55e" stroke="#16a34a" stroke-width="2"/>
+        <text x="300" y="54" text-anchor="middle" fill="#fff" font-size="9">Ukraine</text>
+        <circle cx="550" cy="380" r="20" fill="#6b7280" stroke="#4b5563" stroke-width="2"/>
+        <text x="550" y="384" text-anchor="middle" fill="#fff" font-size="9">GRU</text>
+
+        <!-- 2层节点 -->
+        <circle cx="120" cy="380" r="16" fill="#22c55e" stroke="#16a34a" stroke-width="1.5" opacity="0.7"/>
+        <text x="120" y="383" text-anchor="middle" fill="#fff" font-size="8" opacity="0.7">S.Korea</text>
+        <circle cx="350" cy="400" r="16" fill="#ef4444" stroke="#b91c1c" stroke-width="1.5" opacity="0.7"/>
+        <text x="350" y="403" text-anchor="middle" fill="#fff" font-size="8" opacity="0.7">Lazarus</text>
+        <circle cx="480" cy="420" r="14" fill="#1abc9c" stroke="#0e9e7a" stroke-width="1.5" opacity="0.7"/>
+        <text x="480" y="423" text-anchor="middle" fill="#fff" font-size="7" opacity="0.7">政府</text>
+        <circle cx="600" cy="300" r="14" fill="#ef4444" stroke="#b91c1c" stroke-width="1.5" opacity="0.7"/>
+        <text x="600" y="303" text-anchor="middle" fill="#fff" font-size="7" opacity="0.7">Kimsuky</text>
+
+        <!-- 悬停效果模拟 -->
+        <circle cx="250" cy="290" r="28" fill="none" stroke="#fff" stroke-width="2" opacity="0.5" stroke-dasharray="4 4"/>
+
+        <!-- 边标签 -->
+        <text x="285" y="230" fill="#6e7681" font-size="9" transform="rotate(-15,285,230)">使用</text>
+        <text x="395" y="225" fill="#6e7681" font-size="9" transform="rotate(10,395,225)">使用</text>
+        <text x="260" y="165" fill="#6e7681" font-size="9">瞄准</text>
+        <text x="440" y="230" fill="#6e7681" font-size="9">利用</text>
+        <text x="320" y="100" fill="#6e7681" font-size="9">TARGETS</text>
+        <text x="455" y="275" fill="#6e7681" font-size="9">归属于</text>
+      </svg>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div> APT组织</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div> 恶意软件</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#3b82f6;"></div> ATT&CK技术</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#a855f7;"></div> 漏洞</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#22c55e;"></div> 国家/行业</div>
+    </div>
+  </div>
+
+  <!-- 右侧详情 -->
+  <div class="right-panel">
+    <div class="detail-header">
+      <h2>APT28</h2>
+      <div class="tags">
+        <span class="tag tag-apt">APT_GROUP</span>
+        <span class="tag tag-country">🇷🇺 Russia</span>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-box">
+        <div class="stat-value">0.97</div>
+        <div class="stat-label">置信度</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value">47</div>
+        <div class="stat-label">来源文档</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value">8</div>
+        <div class="stat-label">关联实体</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px;">
+      <h3>📋 简介</h3>
+      <p style="font-size:13px; color:#c9d1d9; line-height:1.6;">
+        APT28（又名 Fancy Bear）是与俄罗斯总参谋部情报总局（GRU）有关的 APT 组织，
+        自 2007 年以来持续活跃，主要针对政府、军事和能源行业进行网络间谍活动。
+      </p>
+    </div>
+
+    <div class="card" style="margin-bottom:12px;">
+      <h3>🔗 关联关系 (8)</h3>
+      <div class="relation-item">
+        <span style="color:#f59e0b;">● LameHug</span>
+        <span class="arrow">← 使用 →</span>
+        <span style="color:#ef4444;">APT28</span>
+        <span style="margin-left:auto; color:#6e7681; font-size:11px;">0.88</span>
+      </div>
+      <div class="relation-item">
+        <span style="color:#f59e0b;">● X-Agent</span>
+        <span class="arrow">← 使用 →</span>
+        <span style="color:#ef4444;">APT28</span>
+        <span style="margin-left:auto; color:#6e7681; font-size:11px;">0.92</span>
+      </div>
+      <div class="relation-item">
+        <span style="color:#a855f7;">● CVE-2025-12345</span>
+        <span class="arrow">← 利用 →</span>
+        <span style="color:#ef4444;">APT28</span>
+        <span style="margin-left:auto; color:#6e7681; font-size:11px;">0.85</span>
+      </div>
+      <div class="relation-item">
+        <span style="color:#22c55e;">● Ukraine</span>
+        <span class="arrow">← 瞄准 →</span>
+        <span style="color:#ef4444;">APT28</span>
+        <span style="margin-left:auto; color:#6e7681; font-size:11px;">0.93</span>
+      </div>
+      <div class="relation-item">
+        <span style="color:#6b7280;">● GRU</span>
+        <span class="arrow">← 归属于 →</span>
+        <span style="color:#ef4444;">APT28</span>
+        <span style="margin-left:auto; color:#6e7681; font-size:11px;">0.94</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; gap:8px;">
+        <div style="flex:1; padding:8px; background:#1f6feb; border-radius:6px; text-align:center; font-size:13px; font-weight:500; cursor:pointer;">📄 生成报告</div>
+        <div style="flex:1; padding:8px; background:#21262d; border:1px solid #30363d; border-radius:6px; text-align:center; font-size:13px; cursor:pointer;">📤 导出图谱</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="status-bar">
+  <div class="status-dot"></div>
+  <span>Neo4j 已连接</span>
+  <span style="margin-left:16px;">LLM API 就绪</span>
+  <span style="margin-left:16px;">上次更新：2026-07-06 14:32:21</span>
+  <span style="margin-left:auto; color:#3fb950;">● 运行中</span>
+</div>
+
+</body>
+</html>
