@@ -14,13 +14,32 @@ class Neo4jService:
         self.driver = None
 
     async def connect(self):
-        """建立数据库连接"""
+        """建立数据库连接并初始化 schema"""
         self.driver = AsyncGraphDatabase.driver(
             NEO4J_URI,
             auth=(NEO4J_USER, NEO4J_PASSWORD)
         )
         await self.driver.verify_connectivity()
+        await self._init_schema()
         logger.info("Neo4j 连接成功: %s", NEO4J_URI)
+
+    async def _init_schema(self):
+        """创建索引和约束，确保 MERGE 是 O(1)"""
+        async with self.driver.session() as session:
+            # Entity 标签上的 id 唯一约束（自动建索引）
+            try:
+                await session.run(
+                    "CREATE CONSTRAINT entity_id_unique IF NOT EXISTS "
+                    "FOR (n:Entity) REQUIRE n.id IS UNIQUE"
+                )
+            except Exception:
+                pass  # Neo4j 5.x+ 不支持 IF NOT EXISTS，忽略已存在的错误
+
+    async def clear_all(self):
+        """清空图中所有节点和关系（用于重建）"""
+        async with self.driver.session() as session:
+            await session.run("MATCH (n) DETACH DELETE n")
+            logger.info("Neo4j 全量清空完成")
 
     async def close(self):
         """关闭连接"""

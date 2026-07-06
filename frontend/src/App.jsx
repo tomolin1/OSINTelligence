@@ -54,13 +54,15 @@ export default function App() {
           names={TYPE_NAMES}
         />
         <div className="center-panel">
-          <GraphChart
-            nodes={graphNodes}
-            edges={edges}
-            selectedId={graphCenter}
-            onNodeClick={handleSelect}
-            colors={TYPE_COLORS}
-          />
+          <div className="graph-wrapper">
+            <GraphChart
+              nodes={graphNodes}
+              edges={edges}
+              selectedId={graphCenter}
+              onNodeClick={handleSelect}
+              colors={TYPE_COLORS}
+            />
+          </div>
           <div className="graph-legend">
             {Object.entries(TYPE_NAMES).map(([type, name]) => (
               <div className="legend-item" key={type}>

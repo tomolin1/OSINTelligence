@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 
 from backend.config import (
     CRAWLER_OUTPUT_DIR, PROCESSED_MARK_DIR,
+    EXTRACTED_OUTPUT_DIR, PIPELINE_VERSION,
     MAX_FILE_SIZE, MAX_TEXT_LENGTH, MIN_TEXT_LENGTH,
     LLM_MAX_CONCURRENCY
 )
@@ -26,6 +27,35 @@ from backend.services import neo4j_svc, llm_svc
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/analyze", tags=["分析"])
+
+
+def _save_extraction_to_disk(result: LLMExtractionOutput):
+    """将 LLM 抽取结果持久化到文件系统（唯一真源）"""
+    out_dir = Path(EXTRACTED_OUTPUT_DIR)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    filepath = out_dir / f"{result.document_id}.json"
+    filepath.write_text(
+        result.model_dump_json(indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    logger.info("抽取结果已保存: %s", filepath)
+
+
+async def _write_to_neo4j(result: LLMExtractionOutput):
+    """将抽取结果写入 Neo4j（查询缓存层）"""
+    for entity in result.entities:
+        label = entity.type.value
+        props = entity.model_dump()
+        props["pipeline_version"] = result.pipeline_version
+        await neo4j_svc.merge_node(label, entity.id, props)
+
+    for rel in result.relationships:
+        props = rel.model_dump()
+        props["pipeline_version"] = result.pipeline_version
+        await neo4j_svc.create_relationship(
+            rel.source_id, rel.target_id,
+            rel.type.value, props
+        )
 
 
 @router.post("", response_model=ApiResponse)
@@ -49,18 +79,13 @@ async def analyze_document(req: AnalyzeRequest):
                 }
             )
 
-        # 自动存入 Neo4j
-        for entity in result.entities:
-            label = entity.type.value
-            await neo4j_svc.merge_node(label, entity.id, entity.model_dump())
-
-        for rel in result.relationships:
-            await neo4j_svc.create_relationship(
-                rel.source_id, rel.target_id,
-                rel.type.value, rel.model_dump()
-            )
+        # 写入真源（文件系统），再写入缓存（Neo4j）
+        _save_extraction_to_disk(result)
+        await _write_to_neo4j(result)
 
         return ApiResponse(data=result.model_dump())
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("分析失败")
         raise HTTPException(status_code=500, detail=str(e))
@@ -104,6 +129,9 @@ async def analyze_file(file: UploadFile = File(...)):
                 "errors": [e.model_dump() for e in validation_errors],
             }
         )
+
+    _save_extraction_to_disk(result)
+    await _write_to_neo4j(result)
 
     return ApiResponse(data=result.model_dump())
 
@@ -149,13 +177,9 @@ async def batch_analyze(req: BatchAnalyzeRequest):
                         "validation_errors": [e.model_dump() for e in validation_errors],
                     }
 
-                for entity in result.entities:
-                    await neo4j_svc.merge_node(entity.type.value, entity.id, entity.model_dump())
-                for rel in result.relationships:
-                    await neo4j_svc.create_relationship(
-                        rel.source_id, rel.target_id,
-                        rel.type.value, rel.model_dump()
-                    )
+                # 先写真源（文件），再写缓存（Neo4j）
+                _save_extraction_to_disk(result)
+                await _write_to_neo4j(result)
 
                 if req.resume:
                     mark_file.write_text(datetime.utcnow().isoformat())
@@ -178,6 +202,50 @@ async def batch_analyze(req: BatchAnalyzeRequest):
             response.errors.append(r)
 
     return ApiResponse(data=response.model_dump())
+
+
+@router.post("/rebuild", response_model=ApiResponse)
+async def rebuild_neo4j():
+    """从 data/extracted/ 中的 JSON 真源重建 Neo4j 图谱缓存。
+    适用场景：Prompt 迭代后重跑、Neo4j 数据损坏恢复。
+    """
+    extracted_dir = Path(EXTRACTED_OUTPUT_DIR)
+    if not extracted_dir.exists():
+        raise HTTPException(status_code=400, detail="extracted 目录不存在，请先运行抽取")
+
+    json_files = list(extracted_dir.glob("*.json"))
+    if not json_files:
+        raise HTTPException(status_code=400, detail="extracted 目录为空，无数据可重建")
+
+    try:
+        await neo4j_svc.clear_all()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"清空 Neo4j 失败: {e}")
+
+    semaphore = asyncio.Semaphore(10)
+
+    async def rebuild_one(f: Path) -> dict | None:
+        async with semaphore:
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                result = LLMExtractionOutput(**data)
+                await _write_to_neo4j(result)
+                return {"ok": True}
+            except Exception as e:
+                logger.error("重建失败: %s, %s", f.name, e)
+                return {"file": f.name, "error": str(e)}
+
+    results = await asyncio.gather(*[rebuild_one(f) for f in json_files])
+    processed = sum(1 for r in results if r and r.get("ok"))
+    failed = sum(1 for r in results if r and not r.get("ok"))
+
+    return ApiResponse(data={
+        "message": "Neo4j 重建完成",
+        "source_files": len(json_files),
+        "processed": processed,
+        "failed": failed,
+        "pipeline_version": PIPELINE_VERSION,
+    })
 
 
 @router.get("/status/{document_id}", response_model=ApiResponse)

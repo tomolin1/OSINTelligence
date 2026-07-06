@@ -28,9 +28,13 @@ LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "3"))
 LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "60"))
 LLM_MAX_CONCURRENCY = int(os.getenv("LLM_MAX_CONCURRENCY", "5"))
 
-# 爬虫输出目录
+# 数据目录（分层存储）
 CRAWLER_OUTPUT_DIR = os.getenv("CRAWLER_OUTPUT_DIR", "data/crawler_output")
+EXTRACTED_OUTPUT_DIR = os.getenv("EXTRACTED_OUTPUT_DIR", "data/extracted")
 PROCESSED_MARK_DIR = os.getenv("PROCESSED_MARK_DIR", "data/processed")
+
+# Pipeline 版本号（Prompt 迭代时递增，用于区分不同版本抽取结果）
+PIPELINE_VERSION = os.getenv("PIPELINE_VERSION", "1")
 
 # 文件限制
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB

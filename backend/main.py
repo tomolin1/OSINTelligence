@@ -1,7 +1,8 @@
 """
-FastAPI 应用入口（MVP模式 — 无需 Neo4j/LLM，所有数据来自 mock_data.json）
+FastAPI 应用入口（MVP模式 — 无需 Neo4j/LLM，优先读取 data/extracted/ 真源）
 """
 import logging
+import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,7 @@ from backend.routers.mvp import router as mvp_router
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
+_start_time = time.time()
 
 
 @asynccontextmanager
@@ -33,4 +35,4 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.get("/")
 async def root():
-    return {"project": PROJECT_NAME, "version": VERSION, "mode": "MVP", "docs": "/docs"}
+    return {"project": PROJECT_NAME, "version": VERSION, "mode": "MVP", "uptime_seconds": int(time.time() - _start_time), "docs": "/docs"}

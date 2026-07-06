@@ -193,12 +193,16 @@ class Summary(BaseModel):
 
 
 class LLMExtractionOutput(BaseModel):
-    """LLM抽取输出 — 对应 schema.json llm_extraction.output_format"""
+    """LLM抽取输出 — 对应 schema.json llm_extraction.output_format
+    这是唯一真源（存储于 data/extracted/），Neo4j 为查询缓存。
+    """
     document_id: str
     entities: list[Entity] = []
     relationships: list[Relationship] = []
     summary: Summary = Field(default_factory=Summary)
     analysis_time: datetime = Field(default_factory=datetime.utcnow)
+    pipeline_version: str = "1"
+    source_url: str = ""
 
 
 # ==================== 图谱模块 ====================

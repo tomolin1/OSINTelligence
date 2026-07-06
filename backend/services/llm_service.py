@@ -11,7 +11,7 @@ import httpx
 
 from backend.config import (
     LLM_API_KEY, LLM_MODEL, LLM_API_BASE,
-    LLM_MAX_RETRIES, LLM_TIMEOUT
+    LLM_MAX_RETRIES, LLM_TIMEOUT, PIPELINE_VERSION
 )
 from backend.models import LLMExtractionOutput, Entity, Relationship, Summary, Mention
 
@@ -99,7 +99,7 @@ class LLMService:
             try:
                 raw = await self._call_llm(content)
                 data = json.loads(raw)
-                return self._parse_response(document_id, data)
+                return self._parse_response(document_id, data, source_url)
             except json.JSONDecodeError as e:
                 last_error = e
                 logger.warning("LLM 输出非合法 JSON (第%d次重试): %s", attempt + 1, e)
@@ -110,7 +110,7 @@ class LLMService:
                 continue
 
         logger.error("LLM 抽取失败，已达最大重试次数: %s", last_error)
-        return LLMExtractionOutput(document_id=document_id)
+        return LLMExtractionOutput(document_id=document_id, pipeline_version=PIPELINE_VERSION)
 
     async def _call_llm(self, content: str) -> str:
         """调用大模型 API"""
@@ -138,7 +138,7 @@ class LLMService:
             return result["choices"][0]["message"]["content"]
 
     def _parse_response(
-        self, document_id: str, data: dict
+        self, document_id: str, data: dict, source_url: str = ""
     ) -> LLMExtractionOutput:
         """解析LLM返回数据"""
         entities = []
@@ -184,6 +184,8 @@ class LLMService:
             relationships=relationships,
             summary=summary,
             analysis_time=datetime.utcnow(),
+            pipeline_version=PIPELINE_VERSION,
+            source_url=source_url,
         )
 
 
